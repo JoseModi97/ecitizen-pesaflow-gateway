@@ -4,7 +4,9 @@ const fs = require('fs');
 const crypto = require('crypto');
 
 // Ensure project is built before testing
-require('./build.js');
+if (!fs.existsSync(path.join(__dirname, '../dist/index.cjs'))) {
+  require('./build.js');
+}
 
 const { EcitizenClient, EcitizenGateway, PhoneHelper, createExpressWebhookHandler } = require('../dist/index.cjs');
 

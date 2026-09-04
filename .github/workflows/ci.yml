@@ -16,12 +16,8 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: 20
-        cache: 'npm'
-    - name: Install dependencies
-      run: npm install --ignore-scripts
-    - name: Run Build and Tests
+    - name: Run Test Suite & CLI Verification
       run: |
-        node scripts/build.js
         node scripts/test.js
         node bin/ecitizen-pesaflow.js --help
         node bin/ecitizen-pesaflow.js test
