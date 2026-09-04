@@ -82,6 +82,16 @@ Check settlement status for a previously submitted reference (requires `ECITIZEN
 npx ecitizen-pesaflow status --reference INV-0001
 ```
 
+### Open the Real Payment Page in a Browser, and Watch for Settlement
+If you'd rather the payer complete checkout in an actual browser (M-Pesa Paybill/STK options, card, bank, etc. - eCitizen's own page) instead of a raw server-to-server POST, `checkout` launches your default browser straight to it and keeps polling in the background so the CLI process detects settlement even after you close the window:
+```bash
+npx ecitizen-pesaflow checkout --amount 500 --reference INV-0001 --description "School fees" \
+  --name "Jane Doe" --id-number 12345678 --phone 0712345678
+```
+It starts a tiny local server serving a self-submitting form (so the browser tab lands directly on eCitizen's page, not an intermediate blank one), opens it in your OS's default browser, then polls `ECITIZEN_STATUS_URL` every `--poll-interval` seconds (default 5s) until it sees a success status, `--timeout` elapses (default 600s), or you press Ctrl+C. Pass `--no-open` to just print the URL instead of auto-launching a browser.
+
+> **Known limitation:** eCitizen's own payment page uses a more specific, apparently browser-session-authenticated status endpoint internally. A headless CLI process doesn't have that session, so if your `ECITIZEN_STATUS_URL` rejects the poll requests (e.g. `401`/`400 "Invalid token"`), that's a limitation of the publicly-documented status API, not a bug in `checkout` itself - the browser-based payment flow still works regardless.
+
 Run `npx ecitizen-pesaflow help` for the full flag reference.
 
 ---

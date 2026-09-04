@@ -36,6 +36,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.runCli = runCli;
 const path = __importStar(require("path"));
 const fs = __importStar(require("fs"));
+const http = __importStar(require("http"));
+const child_process_1 = require("child_process");
 const dotenv = __importStar(require("dotenv"));
 const prompt_1 = require("./prompt");
 const scaffolder_1 = require("./scaffolder");
@@ -75,6 +77,10 @@ async function runCli(argv = process.argv.slice(2)) {
         await runPayCommand(argv.slice(1));
         return;
     }
+    if (command === 'checkout') {
+        await runCheckoutCommand(argv.slice(1));
+        return;
+    }
     if (command === 'status') {
         await runStatusCommand(argv.slice(1));
         return;
@@ -92,6 +98,7 @@ Usage:
 Commands:
   init            Interactive setup wizard to configure credentials and controllers (Default)
   pay             Sign and submit a payment prompt directly to eCitizen - no browser/UI required
+  checkout        Open the real eCitizen payment page in your browser, then watch for settlement
   status          Poll ECITIZEN_STATUS_URL for the settlement status of a reference
   test            Run cryptographic verification check against test vectors
   help, --help    Show this help message
@@ -121,6 +128,12 @@ Options for 'pay' (credentials read from ECITIZEN_* env vars / .env):
   --no-send-stk           Do not request an M-Pesa STK push
   --dry-run               Build and print the signed payload without sending it
   --yes, -y               Skip the confirmation prompt before submitting
+
+Options for 'checkout' (same payment flags as 'pay', plus):
+  --poll-interval <sec>   Seconds between settlement checks (default: 5)
+  --timeout <sec>         Give up watching after this many seconds (default: 600)
+  --no-open               Don't auto-launch the browser, just print the URL
+  --status-url <url>      Overrides ECITIZEN_STATUS_URL for polling
 
 Options for 'status':
   --reference <ref>       Invoice reference to check (required)
@@ -353,6 +366,215 @@ async function runPayCommand(args) {
         const result = await client.initiatePayment(payment);
         console.log(`\n\x1b[1mHTTP ${result.httpStatus}\x1b[0m`);
         console.log(result.responseBody);
+    }
+    catch (err) {
+        prompter.close();
+        console.error('\n\x1b[31mError:\x1b[0m', err.message);
+        process.exit(1);
+    }
+}
+/**
+ * Opens the given URL in the user's default OS browser. Best-effort, no
+ * external dependency - shells out to the platform's own "open a URL"
+ * mechanism (`start` on Windows, `open` on macOS, `xdg-open` elsewhere).
+ */
+function openInBrowser(url) {
+    const platform = process.platform;
+    let command;
+    let args;
+    if (platform === 'win32') {
+        command = 'cmd';
+        args = ['/c', 'start', '""', url];
+    }
+    else if (platform === 'darwin') {
+        command = 'open';
+        args = [url];
+    }
+    else {
+        command = 'xdg-open';
+        args = [url];
+    }
+    try {
+        const child = (0, child_process_1.spawn)(command, args, { detached: true, stdio: 'ignore', shell: false });
+        child.unref();
+    }
+    catch {
+        // Swallowed - caller always prints the URL as a fallback.
+    }
+}
+/**
+ * Serves a single self-submitting HTML page that POSTs the signed payload
+ * straight to eCitizen with a same-window navigation (not "_blank"), so the
+ * browser tab opened for the user lands directly on the real payment page.
+ */
+function startCheckoutServer(pageHtml) {
+    return new Promise((resolve, reject) => {
+        const server = http.createServer((req, res) => {
+            res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+            res.end(pageHtml);
+        });
+        server.on('error', reject);
+        server.listen(0, '127.0.0.1', () => {
+            const address = server.address();
+            const port = typeof address === 'object' && address ? address.port : 0;
+            resolve({ server, url: `http://127.0.0.1:${port}/` });
+        });
+    });
+}
+/**
+ * Polls checkPaymentStatus() until it reports a recognized success status,
+ * the timeout elapses, or the process receives SIGINT (Ctrl+C). Prints a
+ * one-line update each attempt rather than dumping the full raw response.
+ */
+async function pollForSettlement(client, reference, options) {
+    const gateway = client.getGateway();
+    const deadline = Date.now() + options.timeoutMs;
+    let interrupted = false;
+    const onSigint = () => {
+        interrupted = true;
+    };
+    process.on('SIGINT', onSigint);
+    try {
+        while (Date.now() < deadline) {
+            if (interrupted)
+                return 'interrupted';
+            try {
+                const result = await client.checkPaymentStatus(reference);
+                let statusText = '';
+                try {
+                    const parsed = JSON.parse(result.responseBody);
+                    statusText = String(parsed.status ?? parsed.Status ?? '').trim();
+                }
+                catch {
+                    // Non-JSON response - fall through, keep polling.
+                }
+                if (statusText && gateway.isSuccessStatus(statusText)) {
+                    return 'settled';
+                }
+                console.log(`  \x1b[90m... still pending (HTTP ${result.httpStatus}${statusText ? `, status: ${statusText}` : ''})\x1b[0m`);
+            }
+            catch (err) {
+                console.log(`  \x1b[90m... status check failed (${err.message})\x1b[0m`);
+            }
+            await new Promise((resolve) => setTimeout(resolve, options.intervalMs));
+            if (interrupted)
+                return 'interrupted';
+        }
+        return 'timeout';
+    }
+    finally {
+        process.off('SIGINT', onSigint);
+    }
+}
+async function runCheckoutCommand(args) {
+    console.log(BANNER);
+    console.log('\x1b[1mOpening the eCitizen payment page in your browser\x1b[0m\n');
+    const { flags, booleans } = parseFlags(args);
+    const client = new client_1.EcitizenClient();
+    const prompter = new prompt_1.CliPrompter();
+    try {
+        const amount = flags['amount'] || (await prompter.ask({
+            name: 'amount',
+            message: 'Amount to charge',
+            validate: (val) => (val.trim() !== '' && !isNaN(Number(val))) ? true : 'Enter a valid amount.',
+        }));
+        const reference = flags['reference'] || `CLI-${Date.now()}`;
+        const description = flags['description'] || (await prompter.ask({
+            name: 'description',
+            message: 'Description (what is this payment for?)',
+            validate: (val) => val.trim() !== '' ? true : 'Description cannot be empty.',
+        }));
+        const name = flags['name'] || (await prompter.ask({
+            name: 'name',
+            message: "Payer's full name",
+            validate: (val) => val.trim() !== '' ? true : 'Name cannot be empty.',
+        }));
+        const idNumber = flags['id-number'] || (await prompter.ask({
+            name: 'idNumber',
+            message: "Payer's National ID / Passport number",
+            validate: (val) => val.trim() !== '' ? true : 'ID number cannot be empty.',
+        }));
+        const phone = flags['phone'] || (await prompter.ask({
+            name: 'phone',
+            message: "Payer's phone number (for M-Pesa STK push)",
+            default: '',
+        }));
+        prompter.close();
+        const payment = {
+            amount,
+            reference,
+            description,
+            name,
+            idNumber,
+            sendStkPush: !booleans.has('no-send-stk'),
+        };
+        if (phone)
+            payment.phone = phone;
+        if (flags['email'])
+            payment.email = flags['email'];
+        if (flags['currency'])
+            payment.currency = flags['currency'];
+        if (flags['callback-url'])
+            payment.callbackUrl = flags['callback-url'];
+        if (flags['notify-url'])
+            payment.notifyUrl = flags['notify-url'];
+        // target: '_self' so the freshly-opened browser tab navigates straight
+        // to eCitizen's real payment page, instead of opening yet another tab.
+        const formHtml = client.payButton(payment, 'Continue to Payment', { target: '_self' });
+        const pageHtml = `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Redirecting to eCitizen...</title></head>
+<body style="font-family:sans-serif;text-align:center;margin-top:15vh;">
+  <p>Redirecting you to eCitizen to complete payment&hellip;</p>
+  ${formHtml}
+  <script>document.querySelector('form').submit();</script>
+</body>
+</html>`;
+        const { server, url: localUrl } = await startCheckoutServer(pageHtml);
+        console.log(`\n\x1b[1mReference:\x1b[0m ${reference}`);
+        console.log(`\x1b[1mOpening:\x1b[0m ${localUrl}`);
+        if (!booleans.has('no-open')) {
+            openInBrowser(localUrl);
+        }
+        console.log("\nIf a browser window didn't open automatically, visit the URL above.");
+        console.log('Complete the payment in the browser - you can close the window once done.\n');
+        const intervalMs = (Number(flags['poll-interval']) || 5) * 1000;
+        const timeoutMs = (Number(flags['timeout']) || 600) * 1000;
+        console.log(`\x1b[36mWatching for settlement (checking every ${intervalMs / 1000}s, giving up after ${timeoutMs / 1000}s)...\x1b[0m`);
+        console.log('Press Ctrl+C to stop watching at any time.\n');
+        // Only build a second client when --status-url overrides the default,
+        // to reuse the same gateway config (credentials, currency, etc.) otherwise.
+        const gw = client.getGateway();
+        const statusClient = flags['status-url']
+            ? new client_1.EcitizenClient({
+                apiClientID: gw.apiClientID,
+                apiKey: gw.apiKey,
+                secret: gw.secret,
+                serviceID: gw.serviceID,
+                url: gw.url,
+                statusUrl: flags['status-url'],
+            })
+            : client;
+        const outcome = await pollForSettlement(statusClient, reference, { intervalMs, timeoutMs });
+        server.close();
+        if (outcome === 'settled') {
+            console.log(`\n\x1b[1;32m✔ Payment confirmed for reference ${reference}!\x1b[0m\n`);
+        }
+        else if (outcome === 'timeout') {
+            console.log(`\n\x1b[33mGave up watching after ${timeoutMs / 1000}s - no confirmed settlement seen.\x1b[0m`);
+            console.log(`Check again later with: \x1b[36mnpx ecitizen-pesaflow status --reference ${reference}\x1b[0m\n`);
+        }
+        else {
+            console.log(`\n\x1b[33mStopped watching.\x1b[0m Check later with: \x1b[36mnpx ecitizen-pesaflow status --reference ${reference}\x1b[0m\n`);
+        }
+        // Note: eCitizen's own frontend (see the returned payment page's
+        // <mpesa-v2> component) calls a *different*, more specific status
+        // endpoint (".../api/payment/co/getStatus") that appears to be
+        // browser-session-authenticated - a headless CLI process doesn't have
+        // that session, so status polling here may return an auth error rather
+        // than a real settlement status until eCitizen documents a
+        // server-to-server status API. If ECITIZEN_STATUS_URL rejects requests,
+        // this is expected and not a bug in the checkout flow itself.
     }
     catch (err) {
         prompter.close();
