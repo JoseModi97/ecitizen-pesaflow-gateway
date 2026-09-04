@@ -1,0 +1,87 @@
+{
+  "name": "ecitizen-pesaflow-gateway",
+  "version": "1.0.0",
+  "description": "Forward and backward compatible Node.js gateway and interactive setup CLI for Kenya eCitizen / PesaFlow payments",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs"
+    },
+    "./adapters/express": {
+      "types": "./dist/adapters/express.d.ts",
+      "import": "./dist/adapters/express.mjs",
+      "require": "./dist/adapters/express.cjs"
+    },
+    "./adapters/fastify": {
+      "types": "./dist/adapters/fastify.d.ts",
+      "import": "./dist/adapters/fastify.mjs",
+      "require": "./dist/adapters/fastify.cjs"
+    },
+    "./adapters/next": {
+      "types": "./dist/adapters/next.d.ts",
+      "import": "./dist/adapters/next.mjs",
+      "require": "./dist/adapters/next.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "ecitizen-pesaflow": "./bin/ecitizen-pesaflow.js",
+    "ecitizen": "./bin/ecitizen-pesaflow.js"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "node scripts/build.js",
+    "test": "node scripts/test.js",
+    "cli": "node bin/ecitizen-pesaflow.js",
+    "prepack": "node scripts/build.js",
+    "prepare": "node scripts/build.js",
+    "prepublishOnly": "node scripts/build.js && node scripts/test.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JoseModi97/ecitizen-pesaflow-gateway.git"
+  },
+  "bugs": {
+    "url": "https://github.com/JoseModi97/ecitizen-pesaflow-gateway/issues"
+  },
+  "homepage": "https://github.com/JoseModi97/ecitizen-pesaflow-gateway#readme",
+  "keywords": [
+    "ecitizen",
+    "pesaflow",
+    "kenya",
+    "payment",
+    "gateway",
+    "mpesa",
+    "stk-push",
+    "express",
+    "fastify",
+    "nextjs",
+    "nestjs",
+    "node-extension",
+    "payments",
+    "kenyan-payments",
+    "ecitizen-gateway",
+    "pesaflow-gateway",
+    "fintech",
+    "mobile-money",
+    "safaricom"
+  ],
+  "author": "Jose Modi <102935099+JoseModi97@users.noreply.github.com>",
+  "license": "MIT",
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.9",
+    "typescript": "^5.7.3"
+  }
+}
