@@ -12,21 +12,14 @@ let tscCmd = `node "${tscBin}"`;
 
 if (!fs.existsSync(tscBin)) {
   try {
-    console.log('\x1b[34m[build]\x1b[0m node_modules/typescript not found, running npm install...');
-    execSync('npm install', { cwd: rootDir, stdio: 'inherit' });
-  } catch {}
-
-  if (!fs.existsSync(tscBin)) {
-    try {
-      execSync('tsc -v', { stdio: 'ignore' });
-      tscCmd = 'tsc';
-    } catch {
-      if (fs.existsSync(path.join(distDir, 'index.cjs'))) {
-        console.log('\x1b[33m[build]\x1b[0m TypeScript compiler not found; using pre-built dist files.');
-        process.exit(0);
-      }
-      throw new Error('TypeScript compiler not found. Please run `npm install`.');
+    execSync('tsc -v', { stdio: 'ignore' });
+    tscCmd = 'tsc';
+  } catch {
+    if (fs.existsSync(path.join(distDir, 'index.cjs'))) {
+      console.log('\x1b[33m[build]\x1b[0m Using pre-compiled dist files.');
+      process.exit(0);
     }
+    throw new Error('TypeScript compiler (tsc) not found. Please run npm install.');
   }
 }
 
