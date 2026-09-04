@@ -36,6 +36,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.runCli = runCli;
 const path = __importStar(require("path"));
 const fs = __importStar(require("fs"));
+const dotenv = __importStar(require("dotenv"));
 const prompt_1 = require("./prompt");
 const scaffolder_1 = require("./scaffolder");
 const client_1 = require("../client");
@@ -47,6 +48,11 @@ const BANNER = `
 Interactive configurator for Node.js, Express, Fastify & Next.js
 `;
 async function runCli(argv = process.argv.slice(2)) {
+    // Auto-loads a .env file from the current working directory (if present)
+    // so `init`/`pay`/`status` pick up ECITIZEN_* credentials without the
+    // caller having to load dotenv themselves first. CLI-only: EcitizenClient
+    // itself stays dependency-free for programmatic/library use.
+    dotenv.config();
     const command = argv[0] || 'init';
     if (command === '--help' || command === '-h' || command === 'help') {
         printHelp();

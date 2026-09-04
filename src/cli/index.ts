@@ -1,5 +1,6 @@
 import * as path from 'path';
 import * as fs from 'fs';
+import * as dotenv from 'dotenv';
 import { CliPrompter } from './prompt';
 import { ProjectScaffolder, SetupAnswers } from './scaffolder';
 import { EcitizenClient } from '../client';
@@ -14,6 +15,12 @@ Interactive configurator for Node.js, Express, Fastify & Next.js
 `;
 
 export async function runCli(argv: string[] = process.argv.slice(2)): Promise<void> {
+  // Auto-loads a .env file from the current working directory (if present)
+  // so `init`/`pay`/`status` pick up ECITIZEN_* credentials without the
+  // caller having to load dotenv themselves first. CLI-only: EcitizenClient
+  // itself stays dependency-free for programmatic/library use.
+  dotenv.config();
+
   const command = argv[0] || 'init';
 
   if (command === '--help' || command === '-h' || command === 'help') {

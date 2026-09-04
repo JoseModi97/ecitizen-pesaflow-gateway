@@ -10,7 +10,8 @@ A beginner-friendly Kenya eCitizen / PesaFlow payment gateway extension and SDK 
 
 - **Forward & Backward Compatible**: Dual-distributed in CommonJS (`require`) and ES Modules (`import`) with full TypeScript declarations (`.d.ts`). Fully compatible across **Node.js 16, 18, 20, 22, and 24+**.
 - **Interactive CLI Setup (Gii Replacement)**: Forget browser-based Gii web tools! Run `npx ecitizen-pesaflow init` to interactively configure your credentials, create `.env` entries, and scaffold framework-specific payment routes in seconds.
-- **Zero Runtime Dependencies**: The core cryptographic signing and verification uses Node.js's native `node:crypto` module — lightning-fast, ultra-secure, with zero third-party supply-chain bloat.
+- **Headless Payment CLI**: Prompt and check on payments straight from the terminal with `npx ecitizen-pesaflow pay` / `status` — no browser, no HTML, no scaffolding required. The CLI auto-loads `.env` from your project directory.
+- **Minimal-Dependency Core**: The `EcitizenClient`/`EcitizenGateway` core (signing, verification, HTTP submission) uses only Node.js's native `node:crypto` and `node:http(s)` — zero third-party dependencies when used as a library. The CLI itself depends on `dotenv` for `.env` auto-loading convenience.
 - **Instant Payment Button**: Render ready-to-use, HMAC-signed payment forms in one line of code (`payButton()`) or retrieve raw payloads (`checkout()`) for custom React/Vue/mobile UIs.
 - **Safaricom M-Pesa STK Push**: Built-in Kenyan phone normalization (`PhoneHelper`) to trigger instant PIN prompts on customer phones (`07...`, `01...`, `+254...` -> `2547...`).
 - **Timing-Safe Cryptographic Verification**: Validate server-to-server IPN notifications with timing-safe HMAC-SHA256 (`verify()`, `isPaid()`).
@@ -67,6 +68,21 @@ Verify your environment and HMAC algorithms against official test vectors:
 ```bash
 npx ecitizen-pesaflow test
 ```
+
+### Prompt & Check Payments (Headless, No UI)
+Sign and submit a payment directly to eCitizen from the terminal — no browser, no scaffolding. Credentials are read from `ECITIZEN_*` env vars / `.env` (auto-loaded):
+```bash
+npx ecitizen-pesaflow pay --amount 500 --reference INV-0001 --description "School fees" \
+  --name "Jane Doe" --id-number 12345678 --phone 0712345678
+```
+Add `--dry-run` to build and print the signed payload without sending it, useful for inspecting the exact request/hash before going live. By default you'll be asked to confirm before anything is actually submitted; pass `--yes`/`-y` to skip that in scripts/CI.
+
+Check settlement status for a previously submitted reference (requires `ECITIZEN_STATUS_URL` / `--status-url`):
+```bash
+npx ecitizen-pesaflow status --reference INV-0001
+```
+
+Run `npx ecitizen-pesaflow help` for the full flag reference.
 
 ---
 
@@ -241,6 +257,23 @@ if (result.success) {
 } else {
   console.error(`Verification failed: ${result.description}`);
 }
+
+// 3. Or skip the browser/HTML entirely and prompt the payment directly
+// from your server (e.g. triggers an M-Pesa STK push):
+const submission = await ecitizen.initiatePayment({
+  amount: 500,
+  reference: 'INV-0002',
+  description: 'School fees',
+  name: 'Jane Doe',
+  idNumber: '12345678',
+  phone: '0712345678',
+  sendStkPush: true,
+});
+console.log(submission.httpStatus, submission.responseBody);
+
+// 4. Poll settlement status (requires `statusUrl` / ECITIZEN_STATUS_URL)
+const status = await ecitizen.checkPaymentStatus('INV-0002');
+console.log(status.httpStatus, status.responseBody);
 ```
 
 ---
