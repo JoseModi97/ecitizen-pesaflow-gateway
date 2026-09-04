@@ -1,5 +1,5 @@
 import { EcitizenGateway } from './gateway';
-import { EcitizenConfig, PaymentInput, CheckoutResult, VerifyResult, PayButtonOptions } from './types';
+import { EcitizenConfig, PaymentInput, CheckoutResult, VerifyResult, PayButtonOptions, PaymentSubmissionResult, PaymentStatusResult } from './types';
 /**
  * The easy, beginner-friendly way to use eCitizen payments in Node.js.
  * Plain TypeScript / JavaScript — no framework required.
@@ -17,6 +17,22 @@ export declare class EcitizenClient {
      * the payer to eCitizen. No frontend JavaScript or iframe wiring required.
      */
     payButton(payment: PaymentInput, buttonLabel?: string, buttonOptions?: PayButtonOptions): string;
+    /**
+     * Signs a checkout payload and submits it directly to the eCitizen
+     * PaymentAPI from the server - no browser, no HTML form. Use this to
+     * prompt/initiate a payment (e.g. trigger an M-Pesa STK push) from a
+     * plain Node.js script, API route, or CLI, with no user interface at all.
+     *
+     * Returns the raw HTTP response so callers can inspect exactly what
+     * eCitizen sent back.
+     */
+    initiatePayment(payment: PaymentInput): Promise<PaymentSubmissionResult>;
+    /**
+     * Polls the configured status endpoint (ECITIZEN_STATUS_URL /
+     * `statusUrl` config option) for the settlement status of a previously
+     * submitted invoice reference.
+     */
+    checkPaymentStatus(reference: string, extraParams?: Record<string, string>): Promise<PaymentStatusResult>;
     /**
      * Checks a callback/notification payload from eCitizen.
      * Hand the POST body / webhook payload straight to verify(body).

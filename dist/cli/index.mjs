@@ -2,6 +2,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { CliPrompter } from './prompt.mjs';
 import { ProjectScaffolder } from './scaffolder.mjs';
+import { EcitizenClient } from '../client.mjs';
 import { EcitizenGateway } from '../gateway.mjs';
 const BANNER = `
 \x1b[32m=========================================================\x1b[0m
@@ -28,6 +29,14 @@ export async function runCli(argv = process.argv.slice(2)) {
         await runInitWizard(argv.slice(1));
         return;
     }
+    if (command === 'pay') {
+        await runPayCommand(argv.slice(1));
+        return;
+    }
+    if (command === 'status') {
+        await runStatusCommand(argv.slice(1));
+        return;
+    }
     console.log(`\x1b[31mUnknown command: ${command}\x1b[0m\n`);
     printHelp();
     process.exit(1);
@@ -40,6 +49,8 @@ Usage:
 
 Commands:
   init            Interactive setup wizard to configure credentials and controllers (Default)
+  pay             Sign and submit a payment prompt directly to eCitizen - no browser/UI required
+  status          Poll ECITIZEN_STATUS_URL for the settlement status of a reference
   test            Run cryptographic verification check against test vectors
   help, --help    Show this help message
   --version, -v   Show version
@@ -53,6 +64,25 @@ Options for 'init':
   --currency <curr>      Default currency code (default: KES)
   --framework <name>     Target: express | fastify | next-app | next-pages | nest | standalone
   --yes, -y              Skip prompts and use defaults or provided flags
+
+Options for 'pay' (credentials read from ECITIZEN_* env vars / .env):
+  --amount <n>            Amount to charge (required)
+  --reference <ref>       Unique invoice reference (default: auto-generated)
+  --description <text>    What the payment is for (required)
+  --name <name>           Payer's full name (required)
+  --id-number <id>        Payer's National ID / Passport number (required)
+  --phone <msisdn>        Payer's phone number, normalized automatically for STK push
+  --email <email>         Payer's email
+  --currency <curr>       Overrides the configured default currency
+  --callback-url <url>    Browser return URL after payment
+  --notify-url <url>      Server-to-server webhook URL for settlement confirmation
+  --no-send-stk           Do not request an M-Pesa STK push
+  --dry-run               Build and print the signed payload without sending it
+  --yes, -y               Skip the confirmation prompt before submitting
+
+Options for 'status':
+  --reference <ref>       Invoice reference to check (required)
+  --status-url <url>      Overrides ECITIZEN_STATUS_URL for this call
 `);
 }
 async function runInitWizard(args) {
@@ -185,6 +215,132 @@ async function runInitWizard(args) {
         process.exit(1);
     }
 }
+function parseFlags(args) {
+    const flags = {};
+    const booleans = new Set();
+    for (let i = 0; i < args.length; i++) {
+        const arg = args[i];
+        if (!arg.startsWith('--'))
+            continue;
+        const key = arg.slice(2);
+        const next = args[i + 1];
+        if (next !== undefined && !next.startsWith('--')) {
+            flags[key] = next;
+            i++;
+        }
+        else {
+            booleans.add(key);
+        }
+    }
+    return { flags, booleans };
+}
+async function runPayCommand(args) {
+    console.log(BANNER);
+    console.log('\x1b[1mPrompting a payment directly via the eCitizen PaymentAPI (no browser required)\x1b[0m\n');
+    const { flags, booleans } = parseFlags(args);
+    const autoYes = booleans.has('yes') || booleans.has('y');
+    const dryRun = booleans.has('dry-run');
+    const client = new EcitizenClient();
+    const prompter = new CliPrompter();
+    try {
+        const amount = flags['amount'] || (await prompter.ask({
+            name: 'amount',
+            message: 'Amount to charge',
+            validate: (val) => (val.trim() !== '' && !isNaN(Number(val))) ? true : 'Enter a valid amount.',
+        }));
+        const reference = flags['reference'] || `CLI-${Date.now()}`;
+        const description = flags['description'] || (await prompter.ask({
+            name: 'description',
+            message: 'Description (what is this payment for?)',
+            validate: (val) => val.trim() !== '' ? true : 'Description cannot be empty.',
+        }));
+        const name = flags['name'] || (await prompter.ask({
+            name: 'name',
+            message: "Payer's full name",
+            validate: (val) => val.trim() !== '' ? true : 'Name cannot be empty.',
+        }));
+        const idNumber = flags['id-number'] || (await prompter.ask({
+            name: 'idNumber',
+            message: "Payer's National ID / Passport number",
+            validate: (val) => val.trim() !== '' ? true : 'ID number cannot be empty.',
+        }));
+        const phone = flags['phone'] || (await prompter.ask({
+            name: 'phone',
+            message: "Payer's phone number (for M-Pesa STK push)",
+            default: '',
+        }));
+        prompter.close();
+        const payment = {
+            amount,
+            reference,
+            description,
+            name,
+            idNumber,
+            sendStkPush: !booleans.has('no-send-stk'),
+        };
+        if (phone)
+            payment.phone = phone;
+        if (flags['email'])
+            payment.email = flags['email'];
+        if (flags['currency'])
+            payment.currency = flags['currency'];
+        if (flags['callback-url'])
+            payment.callbackUrl = flags['callback-url'];
+        if (flags['notify-url'])
+            payment.notifyUrl = flags['notify-url'];
+        const { url, payload } = client.checkout(payment);
+        console.log('\n\x1b[1mSigned checkout payload:\x1b[0m');
+        console.log(`  Target URL: \x1b[36m${url}\x1b[0m`);
+        for (const [key, value] of Object.entries(payload)) {
+            console.log(`  ${key}: ${value}`);
+        }
+        if (dryRun) {
+            console.log('\n\x1b[33m--dry-run set - payload was not sent.\x1b[0m\n');
+            return;
+        }
+        if (!autoYes) {
+            const confirmPrompter = new CliPrompter();
+            const proceed = await confirmPrompter.confirm('\nSubmit this payment to the LIVE eCitizen PaymentAPI now?', false);
+            confirmPrompter.close();
+            if (!proceed) {
+                console.log('\nAborted. No request was sent.');
+                return;
+            }
+        }
+        console.log('\n\x1b[36mSubmitting to eCitizen...\x1b[0m');
+        const result = await client.initiatePayment(payment);
+        console.log(`\n\x1b[1mHTTP ${result.httpStatus}\x1b[0m`);
+        console.log(result.responseBody);
+    }
+    catch (err) {
+        prompter.close();
+        console.error('\n\x1b[31mError:\x1b[0m', err.message);
+        process.exit(1);
+    }
+}
+async function runStatusCommand(args) {
+    console.log(BANNER);
+    const { flags } = parseFlags(args);
+    const reference = flags['reference'];
+    if (!reference) {
+        console.error('\x1b[31mMissing required --reference <ref>\x1b[0m\n');
+        printHelp();
+        process.exit(1);
+    }
+    const client = new EcitizenClient({
+        statusUrl: flags['status-url'] || process.env.ECITIZEN_STATUS_URL || undefined,
+    });
+    try {
+        console.log(`\x1b[36mChecking status for reference:\x1b[0m ${reference}\n`);
+        const result = await client.checkPaymentStatus(reference);
+        console.log(`\x1b[1mHTTP ${result.httpStatus}\x1b[0m`);
+        console.log(result.responseBody);
+    }
+    catch (err) {
+        console.error('\n\x1b[31mError:\x1b[0m', err.message);
+        process.exit(1);
+    }
+}
 async function runTestCommand() {
     console.log('\n\x1b[34m--- Running eCitizen / PesaFlow Test Suite ---\x1b[0m\n');
     try {
@@ -210,7 +366,8 @@ async function runTestCommand() {
         // 2. Test notification signature verification
         const dataString = 'INV-0001' + '' + '500.00' + '2026-08-17' + 'SECRET1';
         const crypto = await import('crypto');
-        const expectedHash = crypto.createHmac('sha256', 'KEY1').update(dataString, 'utf8').digest('base64');
+        const hexDigest = crypto.createHmac('sha256', 'KEY1').update(dataString, 'utf8').digest('hex');
+        const expectedHash = Buffer.from(hexDigest, 'utf8').toString('base64');
         const valid = gateway.verifyNotificationHash({
             client_invoice_ref: 'INV-0001',
             amount_paid: '500.00',

@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.EcitizenClient = void 0;
 const gateway_1 = require("./gateway");
 const phone_1 = require("./helpers/phone");
+const http_1 = require("./helpers/http");
 /**
  * Friendly field mapping from plain-English to underlying eCitizen fields.
  */
@@ -45,6 +46,7 @@ class EcitizenClient {
             secret: settings?.secret ?? process.env.ECITIZEN_SECRET,
             serviceID: settings?.serviceID ?? process.env.ECITIZEN_SERVICE_ID,
             url: settings?.url ?? process.env.ECITIZEN_GATEWAY_URL ?? 'https://payments.ecitizen.go.ke/PaymentAPI/iframev2.1.php',
+            statusUrl: settings?.statusUrl ?? process.env.ECITIZEN_STATUS_URL ?? '',
             currency: settings?.currency ?? process.env.ECITIZEN_CURRENCY ?? 'KES',
             pictureURL: settings?.pictureURL ?? '',
             sendSTK: settings?.sendSTK ?? false,
@@ -89,6 +91,48 @@ class EcitizenClient {
         html += `<button type="submit"${this.renderAttributes(btnOpts)}>${this.escapeText(buttonLabel)}</button>`;
         html += '</form>';
         return html;
+    }
+    /**
+     * Signs a checkout payload and submits it directly to the eCitizen
+     * PaymentAPI from the server - no browser, no HTML form. Use this to
+     * prompt/initiate a payment (e.g. trigger an M-Pesa STK push) from a
+     * plain Node.js script, API route, or CLI, with no user interface at all.
+     *
+     * Returns the raw HTTP response so callers can inspect exactly what
+     * eCitizen sent back.
+     */
+    async initiatePayment(payment) {
+        const { url, payload } = this.checkout(payment);
+        const response = await (0, http_1.postForm)(url, payload);
+        return {
+            requestUrl: url,
+            requestPayload: payload,
+            httpStatus: response.httpStatus,
+            responseBody: response.body,
+        };
+    }
+    /**
+     * Polls the configured status endpoint (ECITIZEN_STATUS_URL /
+     * `statusUrl` config option) for the settlement status of a previously
+     * submitted invoice reference.
+     */
+    async checkPaymentStatus(reference, extraParams = {}) {
+        const statusUrl = this.gateway.statusUrl;
+        if (!statusUrl) {
+            throw new Error('checkPaymentStatus() requires a status URL. Pass { statusUrl: "..." } to new EcitizenClient(...) ' +
+                'or set process.env.ECITIZEN_STATUS_URL.');
+        }
+        const response = await (0, http_1.getUrl)(statusUrl, {
+            apiClientID: this.gateway.apiClientID,
+            serviceID: this.gateway.serviceID,
+            billRefNumber: reference,
+            ...extraParams,
+        });
+        return {
+            requestUrl: response.requestUrl,
+            httpStatus: response.httpStatus,
+            responseBody: response.body,
+        };
     }
     /**
      * Checks a callback/notification payload from eCitizen.

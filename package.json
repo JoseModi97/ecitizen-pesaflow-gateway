@@ -1,6 +1,6 @@
 {
   "name": "ecitizen-pesaflow-gateway",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Forward and backward compatible Node.js gateway and interactive setup CLI for Kenya eCitizen / PesaFlow payments",
   "main": "./dist/index.cjs",
   "module": "./dist/index.mjs",

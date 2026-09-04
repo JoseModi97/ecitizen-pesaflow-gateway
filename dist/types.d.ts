@@ -4,6 +4,7 @@ export interface EcitizenConfig {
     secret: string;
     serviceID: string;
     url?: string;
+    statusUrl?: string;
     pictureURL?: string;
     currency?: string;
     sendSTK?: boolean;
@@ -29,6 +30,17 @@ export interface PaymentInput {
 export interface CheckoutResult {
     url: string;
     payload: Record<string, string>;
+}
+export interface PaymentSubmissionResult {
+    requestUrl: string;
+    requestPayload: Record<string, string>;
+    httpStatus: number;
+    responseBody: string;
+}
+export interface PaymentStatusResult {
+    requestUrl: string;
+    httpStatus: number;
+    responseBody: string;
 }
 export interface VerifyResult {
     success: boolean;

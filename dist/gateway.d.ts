@@ -11,6 +11,7 @@ export declare class EcitizenGateway {
     secret: string;
     serviceID: string;
     url: string;
+    statusUrl: string;
     pictureURL: string;
     currency: string;
     sendSTK: boolean;
@@ -42,5 +43,14 @@ export declare class EcitizenGateway {
      */
     isSuccessStatus(status: any): boolean;
     normalizeAmount(amount: any): string;
+    /**
+     * eCitizen's secureHash is base64(hex(hmac_sha256(...))) - PHP's
+     * hash_hmac() returns a hex string by default, and the reference
+     * implementation base64-encodes that hex string directly rather than the
+     * raw digest bytes. Node's Hmac#digest('base64') would base64-encode the
+     * raw bytes instead, producing a different (shorter, incompatible) hash -
+     * so this reproduces PHP's two-step encoding explicitly.
+     */
+    private hmacSha256HexThenBase64;
     private isTruthy;
 }

@@ -47,6 +47,7 @@ class EcitizenGateway {
     secret = '';
     serviceID = '';
     url = 'https://payments.ecitizen.go.ke/PaymentAPI/iframev2.1.php';
+    statusUrl = '';
     pictureURL = '';
     currency = 'KES';
     sendSTK = false;
@@ -63,6 +64,8 @@ class EcitizenGateway {
                 this.serviceID = String(config.serviceID);
             if (config.url !== undefined)
                 this.url = String(config.url);
+            if (config.statusUrl !== undefined)
+                this.statusUrl = String(config.statusUrl);
             if (config.pictureURL !== undefined)
                 this.pictureURL = String(config.pictureURL);
             if (config.currency !== undefined)
@@ -156,7 +159,7 @@ class EcitizenGateway {
             String(payload.billDesc ?? '') +
             String(payload.clientName ?? '') +
             String(this.secret);
-        return crypto.createHmac('sha256', String(this.apiKey)).update(dataString, 'utf8').digest('base64');
+        return this.hmacSha256HexThenBase64(dataString);
     }
     /**
      * Verifies the secure_hash/secureHash on an inbound callback or
@@ -173,7 +176,7 @@ class EcitizenGateway {
             String(payload.amount_paid ?? payload.amount ?? '') +
             String(payload.payment_date ?? '') +
             String(this.secret);
-        const expectedHash = crypto.createHmac('sha256', String(this.apiKey)).update(dataString, 'utf8').digest('base64');
+        const expectedHash = this.hmacSha256HexThenBase64(dataString);
         const expectedBuffer = Buffer.from(expectedHash, 'utf8');
         const providedBuffer = Buffer.from(providedHash, 'utf8');
         if (expectedBuffer.length !== providedBuffer.length) {
@@ -200,6 +203,18 @@ class EcitizenGateway {
             return '';
         }
         return num.toFixed(2);
+    }
+    /**
+     * eCitizen's secureHash is base64(hex(hmac_sha256(...))) - PHP's
+     * hash_hmac() returns a hex string by default, and the reference
+     * implementation base64-encodes that hex string directly rather than the
+     * raw digest bytes. Node's Hmac#digest('base64') would base64-encode the
+     * raw bytes instead, producing a different (shorter, incompatible) hash -
+     * so this reproduces PHP's two-step encoding explicitly.
+     */
+    hmacSha256HexThenBase64(dataString) {
+        const hex = crypto.createHmac('sha256', String(this.apiKey)).update(dataString, 'utf8').digest('hex');
+        return Buffer.from(hex, 'utf8').toString('base64');
     }
     isTruthy(value) {
         if (typeof value === 'boolean')

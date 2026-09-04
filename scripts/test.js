@@ -139,9 +139,11 @@ test('createCheckoutPayload produces exact format and HMAC-SHA256 signature', ()
   assert.strictEqual(payload.sendSTK, 'true');
   assert.ok(payload.secureHash);
 
-  // Cross check hash computation
+  // Cross check hash computation - eCitizen's secureHash is base64(hex(hmac)),
+  // matching PHP's base64_encode(hash_hmac(...)) default (hex) behavior.
   const dataString = 'CLIENT1' + '500.00' + 'SERVICE1' + '12345678' + 'KES' + 'INV-0001' + 'School fees' + 'Jane Doe' + 'SECRET1';
-  const expected = crypto.createHmac('sha256', 'KEY1').update(dataString, 'utf8').digest('base64');
+  const expectedHex = crypto.createHmac('sha256', 'KEY1').update(dataString, 'utf8').digest('hex');
+  const expected = Buffer.from(expectedHex, 'utf8').toString('base64');
   assert.strictEqual(payload.secureHash, expected);
 });
 
@@ -173,7 +175,7 @@ test('verifyNotificationHash validates against test vector', () => {
   });
 
   const dataString = 'INV-0001' + '' + '500.00' + '2026-08-17' + 'SECRET1';
-  const hash = crypto.createHmac('sha256', 'KEY1').update(dataString, 'utf8').digest('base64');
+  const hash = Buffer.from(crypto.createHmac('sha256', 'KEY1').update(dataString, 'utf8').digest('hex'), 'utf8').toString('base64');
 
   const valid = gw.verifyNotificationHash({
     client_invoice_ref: 'INV-0001',
@@ -290,7 +292,7 @@ test('verify returns success for valid signed payload', () => {
   const client = new EcitizenClient(CREDENTIALS);
 
   const dataString = 'INV-0001' + '' + '500.00' + '2026-08-17' + 'SECRET1';
-  const hash = crypto.createHmac('sha256', 'KEY1').update(dataString, 'utf8').digest('base64');
+  const hash = Buffer.from(crypto.createHmac('sha256', 'KEY1').update(dataString, 'utf8').digest('hex'), 'utf8').toString('base64');
 
   const result = client.verify({
     client_invoice_ref: 'INV-0001',
@@ -338,7 +340,7 @@ testAsync('Express webhook handler calls onSuccess and returns 200 json', async 
   const client = new EcitizenClient(CREDENTIALS);
 
   const dataString = 'INV-0001' + '' + '500.00' + '2026-08-17' + 'SECRET1';
-  const hash = crypto.createHmac('sha256', 'KEY1').update(dataString, 'utf8').digest('base64');
+  const hash = Buffer.from(crypto.createHmac('sha256', 'KEY1').update(dataString, 'utf8').digest('hex'), 'utf8').toString('base64');
 
   let successCalled = false;
   const handler = createExpressWebhookHandler(client, {
