@@ -9,7 +9,7 @@
 A beginner-friendly Kenya eCitizen / PesaFlow payment gateway extension and SDK for **Node.js**, **Express**, **Fastify**, **Next.js**, **NestJS**, and **Vanilla JavaScript / TypeScript**. Build signed checkout payloads, render instant payment buttons, and verify webhook callbacks with plain-English fields.
 
 - **Forward & Backward Compatible**: Dual-distributed in CommonJS (`require`) and ES Modules (`import`) with full TypeScript declarations (`.d.ts`). Fully compatible across **Node.js 16, 18, 20, 22, and 24+**.
-- **Interactive CLI Setup (Gii Replacement)**: Forget browser-based Gii web tools! Run `npx ecitizen-pesaflow init` to interactively configure your credentials, create `.env` entries, and scaffold framework-specific payment routes in seconds.
+- **Interactive CLI Setup**: Run `npx ecitizen-pesaflow init` to interactively configure your credentials, create `.env` entries, and scaffold framework-specific payment routes in seconds.
 - **Headless Payment CLI**: Prompt and check on payments straight from the terminal with `npx ecitizen-pesaflow pay` / `status` — no browser, no HTML, no scaffolding required. The CLI auto-loads `.env` from your project directory.
 - **Minimal-Dependency Core**: The `EcitizenClient`/`EcitizenGateway` core (signing, verification, HTTP submission) uses only Node.js's native `node:crypto` and `node:http(s)` — zero third-party dependencies when used as a library. The CLI itself depends on `dotenv` for `.env` auto-loading convenience.
 - **Instant Payment Button**: Render ready-to-use, HMAC-signed payment forms in one line of code (`payButton()`) or retrieve raw payloads (`checkout()`) for custom React/Vue/mobile UIs.
@@ -42,9 +42,9 @@ pnpm add ecitizen-pesaflow-gateway
 
 ---
 
-## Interactive CLI Setup (Gii Alternative)
+## Interactive CLI Setup
 
-Instead of navigating web forms in Yii2's Gii, set up your project seamlessly directly from your terminal:
+Set up your project seamlessly directly from your terminal:
 
 ```bash
 npx ecitizen-pesaflow init
@@ -288,18 +288,18 @@ console.log(status.httpStatus, status.responseBody);
 
 ---
 
-## Migration from `yii2-ecitizen-gateway` / Laravel
+## API Reference Overview
 
-If you are migrating or integrating with existing backend systems from [`yii2-ecitizen-gateway`](https://github.com/josemodi97/yii2-ecitizen-gateway), the field names and cryptographic algorithms are 100% identical:
-
-| PHP (Yii2 / Laravel) | Node.js (`ecitizen-pesaflow-gateway`) | Description |
-|---|---|---|
-| `$client->checkout(...)` | `client.checkout(...)` | Generates signed checkout payload |
-| `$client->payButton(...)` | `client.payButton(...)` | Generates self-contained HTML form |
-| `$client->verify($_POST)` | `client.verify(req.body)` | Verifies IPN webhook HMAC signature |
-| `$client->isPaid($_POST)` | `client.isPaid(req.body)` | Returns boolean verification result |
-| `PhoneHelper::normalize($p)` | `PhoneHelper.normalize(p)` | Normalizes Kenyan phone numbers |
-| Gii Web Generator | `npx ecitizen-pesaflow init` | Interactive setup wizard |
+| Method / Utility | Description |
+|---|---|
+| `client.checkout(...)` | Generates signed checkout payload and endpoint URL |
+| `client.payButton(...)` | Generates self-contained HTML form and payment button |
+| `client.initiatePayment(...)` | Directly submits payment without browser/HTML |
+| `client.checkPaymentStatus(...)` | Polls payment settlement status |
+| `client.verify(payload)` | Verifies IPN webhook HMAC signature |
+| `client.isPaid(payload)` | Returns boolean verification result |
+| `PhoneHelper.normalize(phone)` | Normalizes Kenyan phone numbers (`07...`, `01...` -> `254...`) |
+| `npx ecitizen-pesaflow init` | Interactive project setup wizard |
 
 ---
 
