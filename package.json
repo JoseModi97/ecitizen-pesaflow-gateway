@@ -29,8 +29,8 @@
     "./package.json": "./package.json"
   },
   "bin": {
-    "ecitizen-pesaflow": "./bin/ecitizen-pesaflow.js",
-    "ecitizen": "./bin/ecitizen-pesaflow.js"
+    "ecitizen-pesaflow": "bin/ecitizen-pesaflow.js",
+    "ecitizen": "bin/ecitizen-pesaflow.js"
   },
   "files": [
     "dist",
